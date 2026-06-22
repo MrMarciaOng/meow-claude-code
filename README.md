@@ -18,17 +18,30 @@ Claude's usage limit runs on a rolling ~5h window that starts at your **first**
 prompt. `meow` sends a tiny `MEOW` (cheap **haiku** model) **every 5 hours** from
 a time you choose (default **07:00**) to keep a fresh window open all day.
 
-## Install (macOS)
+## Install (macOS / Linux)
+
+Run it straight from npm — no clone:
 
 ```bash
-git clone <this-repo> && cd meow-claude-code
-chmod +x install.sh && ./install.sh     # asks before each step (--yes for defaults)
+npx meow-claude-code --start     # schedule every 5h from 07:00
+npx meow-claude-code --status
 ```
 
-This copies `meow.sh` to `~/Library/Application Support/...`, links a `meow`
-command on your PATH, and starts the schedule via launchd. Needs the
-[`claude`](https://claude.com/claude-code) CLI, signed in (run `claude` once).
-Remove everything with `./install.sh --uninstall`.
+Or install the `meow` command globally:
+
+```bash
+npm i -g meow-claude-code
+meow --start 07:00
+```
+
+Or from source (interactive setup, also links a `meow` command):
+
+```bash
+git clone <this-repo> && cd meow-claude-code && ./install.sh   # --yes for defaults
+```
+
+Needs the [`claude`](https://claude.com/claude-code) CLI, signed in (run `claude`
+once). Uninstall: `meow --stop` pauses; `./install.sh --uninstall` removes everything.
 
 ## Commands
 
@@ -42,8 +55,9 @@ Remove everything with `./install.sh --uninstall`.
 | `meow --help` | Usage |
 
 `meow --start 07:00` fires at **07:00, 12:00, 17:00, 22:00, 03:00** (5×/day, ~5h
-apart). Bare `meow start` / `meow stop` work too. Before install, run
-`./meow.sh` from the repo. Each run logs one line to `~/.meow-claude.log`.
+apart). Bare `meow start` / `meow stop` work too. No global install? Use
+`npx meow-claude-code <cmd>` (or `./meow.sh <cmd>` from the repo). Each run logs
+one line to `~/.meow-claude.log`.
 
 ## Notes
 

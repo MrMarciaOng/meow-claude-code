@@ -1,0 +1,41 @@
+{
+  "name": "meow-claude-code",
+  "version": "1.0.0",
+  "description": "Send a tiny MEOW to Claude Code every 5 hours to keep your usage window fresh.",
+  "bin": {
+    "meow-claude-code": "bin/cli.js",
+    "meow": "bin/cli.js"
+  },
+  "files": [
+    "meow.sh",
+    "install.sh",
+    "bin/cli.js"
+  ],
+  "engines": {
+    "node": ">=14"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "cli",
+    "cron",
+    "launchd",
+    "meow",
+    "usage-limit"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrMarciaOng/meow-claude-code.git"
+  },
+  "homepage": "https://github.com/MrMarciaOng/meow-claude-code#readme",
+  "bugs": {
+    "url": "https://github.com/MrMarciaOng/meow-claude-code/issues"
+  },
+  "author": "Marcia Ong",
+  "license": "MIT"
+}
