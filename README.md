@@ -3,9 +3,9 @@
 A one-line **MEOW** wake-up for Claude Code.
 
 Claude Pro/Max usage limits run on a rolling ~5-hour window that begins at your
-**first** prompt. `meow.sh` sends a tiny `MEOW` to the cheap **haiku** model so
-you can anchor that window to a fixed time each morning (default **07:00**)
-instead of whenever you happen to start working.
+**first** prompt. `meow.sh` sends a tiny `MEOW` to the cheap **haiku** model
+every **5 hours** from a start time you choose (default **07:00**) — keeping a
+fresh window open through the day instead of starting it whenever you happen to.
 
 ```
 ███╗   ███╗███████╗ ██████╗ ██╗    ██╗
@@ -33,7 +33,7 @@ chmod +x install.sh
 
 1. Copy `meow.sh` into `~/Library/Application Support/meow-claude-code/`
 2. Add a `meow` command to `~/.local/bin` (so you can run `meow` from anywhere)
-3. Schedule the daily MEOW via launchd (prompts for a time, default `07:00`)
+3. Start the MEOW schedule — every 5h via launchd (prompts for a time, default `07:00`)
 
 Use `./install.sh --yes` to accept all defaults non-interactively. After
 installing, run it any time with just `meow`.
@@ -49,7 +49,7 @@ logged in (run `claude` once interactively to sign in).
 
 Every run appends a timestamped line to `~/.meow-claude.log`.
 
-## Schedule a daily MEOW
+## Schedule the MEOW (every 5 hours)
 
 > If you used `install.sh`, the schedule is already set — use `meow` in place of
 > `./meow.sh` below to change it.
@@ -57,20 +57,23 @@ Every run appends a timestamped line to `~/.meow-claude.log`.
 ### macOS — use launchd (recommended)
 
 ```bash
-./meow.sh --start          # daily @ 07:00 (default)
-./meow.sh --start 09:30    # daily @ 09:30 (any HH:MM, 24-hour)
+./meow.sh --start          # every 5h from 07:00 (default)
+./meow.sh --start 09:30    # every 5h from 09:30 (any HH:MM, 24-hour)
 ./meow.sh --stop           # stop it
 ```
 
-`--start` schedules a launchd LaunchAgent (you can also write `meow start` /
-`meow stop`).
+`--start` schedules a launchd LaunchAgent that fires every 5 hours from your
+start time (you can also write `meow start` / `meow stop`). Since the usage
+window is ~5h, this keeps a fresh one open all day. Starting at 07:00 fires at
+**07:00, 12:00, 17:00, 22:00, 03:00** — 5×/day, ~5h apart (one 4h gap overnight,
+since 24 isn't divisible by 5).
 
-A launchd LaunchAgent runs inside your logged-in session, so it can read your
+A LaunchAgent runs inside your logged-in session, so it can read your
 credentials from the login keychain. The installer also copies the script to
 `~/Library/Application Support/meow-claude-code/` and points the job there —
 schedulers can't execute files in protected folders like `~/Documents`, so this
-keeps the daily run working. (Tested end-to-end: a triggered run authenticates
-and logs `MEOW sent`.)
+keeps the scheduled runs working. (Tested end-to-end: a triggered run
+authenticates and logs `MEOW sent`.)
 
 **Verify it fires** (runs the job on demand in its real scheduled context):
 
@@ -82,14 +85,15 @@ sleep 30 && tail -n1 ~/.meow-claude.log    # expect: ... MEOW sent (haiku) -> ..
 ### Linux (or cron)
 
 ```bash
-./meow.sh --install-cron [HH:MM]     # default 07:00
+./meow.sh --install-cron [HH:MM]     # every 5h from HH:MM (default 07:00)
 ./meow.sh --uninstall-cron
 ```
 
-The installer manages a single marked crontab line; the equivalent manual entry is:
+The installer manages a single marked crontab line with a comma-separated hour
+list; the equivalent manual entry for a 07:00 start is:
 
 ```cron
-0 7 * * * "/path/to/meow.sh" >/dev/null 2>>"$HOME/.meow-claude.log" # meow-claude-code
+0 7,12,17,22,3 * * * "/path/to/meow.sh" >/dev/null 2>>"$HOME/.meow-claude.log" # meow-claude-code
 ```
 
 > On **macOS**, cron is not recommended: the cron daemon often can't reach the
@@ -106,9 +110,9 @@ The installer manages a single marked crontab line; the equivalent manual entry 
 | `./install.sh --uninstall` | Interactive removal (schedule, command, files), asks before each step |
 | `meow` *(or `./meow.sh`)* | Print the art, send `MEOW` (haiku) now, log the result |
 | `meow --status` | Show status: CLI, install, `meow` command, schedule, last run |
-| `meow --start [HH:MM]` | macOS: start the daily MEOW (default 07:00) |
-| `meow --stop` | macOS: stop the daily MEOW |
-| `meow --install-cron [HH:MM]` | Schedule a daily MEOW via cron instead (Linux) |
+| `meow --start [HH:MM]` | macOS: MEOW every 5h from HH:MM (default 07:00) |
+| `meow --stop` | macOS: stop the MEOW schedule |
+| `meow --install-cron [HH:MM]` | Same via cron instead (Linux) |
 | `meow --uninstall-cron` | Remove the cron job |
 | `meow --help` | Show usage |
 

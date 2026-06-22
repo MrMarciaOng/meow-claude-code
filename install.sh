@@ -3,8 +3,8 @@
 # install.sh — interactive installer for meow-claude-code.
 #
 # Installs meow.sh into the user Application Support folder, optionally adds a
-# `meow` command to your PATH, and optionally schedules the daily MEOW. Every
-# step asks for permission first; pass --yes to accept all defaults.
+# `meow` command to your PATH, and optionally starts the MEOW schedule (every
+# 5h). Every step asks for permission first; pass --yes to accept all defaults.
 #
 # Usage:
 #   ./install.sh             # interactive install (asks before each step)
@@ -34,7 +34,7 @@ install.sh — install or remove meow-claude-code for the current user.
 Install steps (each asks permission first):
   1. Copy meow.sh -> $APP_SUPPORT_DIR
   2. Link a 'meow' command -> $LINK
-  3. Start the daily MEOW (launchd, default $DEFAULT_TIME)
+  3. Start the MEOW schedule — every 5h (launchd, default $DEFAULT_TIME)
 
 Usage:
   ./install.sh             Interactive install
@@ -91,11 +91,11 @@ do_install() {
   fi
   echo
 
-  # 3. Optionally start the daily MEOW (delegates to meow.sh).
-  if confirm "Start the daily MEOW now?"; then
+  # 3. Optionally start the MEOW schedule (delegates to meow.sh).
+  if confirm "Start the MEOW schedule (every 5h) now?"; then
     local time="$DEFAULT_TIME"
     if [ "$ASSUME_YES" != "1" ]; then
-      read -r -p "  Time to run daily (HH:MM) [$DEFAULT_TIME]: " time </dev/tty || time=""
+      read -r -p "  Start time (HH:MM), then every 5h [$DEFAULT_TIME]: " time </dev/tty || time=""
       time="${time:-$DEFAULT_TIME}"
     fi
     "$DEST" --start "$time"
@@ -111,15 +111,15 @@ do_uninstall() {
   echo "meow-claude-code uninstaller"
   echo
 
-  # 1. Stop the daily schedule.
+  # 1. Stop the MEOW schedule.
   if [ -f "$PLIST" ]; then
-    if confirm "Stop the daily MEOW schedule?"; then
+    if confirm "Stop the MEOW schedule?"; then
       launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true
       rm -f "$PLIST"
       echo "  ✓ schedule removed"
     fi
   else
-    echo "  (no daily MEOW schedule found)"
+    echo "  (no MEOW schedule found)"
   fi
   echo
 
