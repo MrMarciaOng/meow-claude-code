@@ -1,6 +1,6 @@
 {
   "name": "meow-claude-code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Send a tiny MEOW to Claude Code every 5 hours to keep your usage window fresh.",
   "bin": {
     "meow-claude-code": "bin/cli.js",

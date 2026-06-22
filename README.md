@@ -48,6 +48,7 @@ once). Uninstall: `meow --stop` pauses; `./install.sh --uninstall` removes every
 | Command | What it does |
 | --- | --- |
 | `meow` | Send a MEOW now (haiku) + print the art |
+| `meow --test` | One-off MEOW; report PASS/FAIL + timing (test, doesn't skew status) |
 | `meow --status` | Show install, schedule, and last run |
 | `meow --start [HH:MM]` | MEOW every 5h from HH:MM (default 07:00) |
 | `meow --stop` | Stop the schedule |
@@ -65,4 +66,9 @@ one line to `~/.meow-claude.log`.
   keychain — plain cron usually can't and fails with `Not logged in`.
 - The script installs outside `~/Documents` so the scheduler can execute it
   (protected folders give `Operation not permitted`).
+- Transient connection errors (e.g. firing right as the Mac wakes, before the
+  network is up) are **retried** up to 10× with exponential backoff (5s, 10s,
+  20s, 40s, then capped at 60s — ~6 min total) before logging a failure; auth
+  errors fail fast. Tune `MAX_ATTEMPTS` / `RETRY_BACKOFF_SECONDS` /
+  `RETRY_MAX_DELAY` at the top of `meow.sh`.
 - Not firing? Check `~/.meow-claude.log`; a `MEOW FAILED` line shows why.

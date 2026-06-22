@@ -9,6 +9,7 @@
 #
 # Usage:
 #   ./meow.sh                         # print cat art + send MEOW now (haiku), log result
+#   ./meow.sh --test                  # one-off MEOW; print PASS/FAIL + timing (test marker in log)
 #   ./meow.sh --status                # show install/schedule/last-run status
 #   ./meow.sh --start [HH:MM]         # macOS: MEOW every 5h from HH:MM (default 07:00)
 #   ./meow.sh --stop                  # macOS: stop the MEOW schedule
@@ -35,6 +36,15 @@ DEFAULT_TIME="07:00"
 # Claude's usage window is ~5h, so we re-MEOW every 5h to keep a fresh window
 # open through the day (anchored to the chosen start time).
 INTERVAL_HOURS=5
+# A scheduled MEOW can fire right as the Mac wakes from sleep, before the
+# network/VPN is back up — that surfaces as a transient "Unable to connect"
+# error. Rather than log a hard failure, retry those with exponential backoff
+# (5s, 10s, 20s, 40s, then capped at RETRY_MAX_DELAY). Auth/other errors fail
+# fast (see is_transient_error). Tune these knobs to widen/narrow the window;
+# set RETRY_MAX_DELAY very high to make the backoff effectively uncapped.
+MAX_ATTEMPTS=10
+RETRY_BACKOFF_SECONDS=5   # base delay; doubles each retry
+RETRY_MAX_DELAY=60        # ceiling per wait, so late retries don't balloon
 
 # Absolute path to this script (needed so a scheduler can find it).
 SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -96,26 +106,100 @@ print_art() {
 EOF
 }
 
+# Is this failure worth retrying? Transient connectivity hiccups (waking before
+# the network is up, a brief blip, DNS not ready) recover on their own, so we
+# retry them. Auth/usage errors ("Not logged in", "invalid api key") won't fix
+# themselves within seconds, so those fail fast.
+is_transient_error() {
+  printf '%s' "$1" | grep -qiE \
+    'unable to connect|connection ?refused|econnrefused|fetch failed|network|timed? ?out|etimedout|enotfound|getaddrinfo|socket hang ?up|eai_again'
+}
+
+# Send one MEOW, retrying transient connection failures with exponential backoff.
+# Communicates results via globals (bash can't cleanly return a string + code +
+# count together):
+#   MEOW_REPLY    — combined stdout+stderr of the final attempt
+#   MEOW_RC       — exit code of the final attempt (0 = success)
+#   MEOW_ATTEMPTS — number of attempts made
+# Returns MEOW_RC.
+send_meow() {
+  local claude attempt=1 delay
+  MEOW_REPLY=""; MEOW_RC=1; MEOW_ATTEMPTS=0
+  if ! claude="$(resolve_claude)"; then
+    MEOW_REPLY="claude CLI not found"
+    return 1
+  fi
+
+  while :; do
+    MEOW_ATTEMPTS="$attempt"
+    if MEOW_REPLY="$("$claude" -p "$PROMPT" --model "$MODEL" 2>&1)"; then
+      MEOW_RC=0
+      return 0
+    else
+      # Capture the real exit code here, inside else — after `fi` it would read
+      # the if-statement's own status (0), not the failed command's.
+      MEOW_RC=$?
+    fi
+    # Give up if we're out of attempts or the error won't self-heal.
+    if [ "$attempt" -ge "$MAX_ATTEMPTS" ] || ! is_transient_error "$MEOW_REPLY"; then
+      return "$MEOW_RC"
+    fi
+    # Exponential backoff (base, base*2, base*4, ...), capped at RETRY_MAX_DELAY.
+    delay=$(( RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1)) ))
+    if [ "$delay" -gt "$RETRY_MAX_DELAY" ]; then delay="$RETRY_MAX_DELAY"; fi
+    printf 'meow: attempt %d/%d failed (%s); retrying in %ds...\n' \
+      "$attempt" "$MAX_ATTEMPTS" "$(printf '%s' "$MEOW_REPLY" | head -n1)" "$delay" >&2
+    sleep "$delay"
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 # Send the MEOW, print the reply, and append a timestamped line to the log.
 run_meow() {
   print_art
 
-  local claude reply ts first rc
-  claude="$(resolve_claude)"
+  local ts first tries
   ts="$(date '+%Y-%m-%d %H:%M:%S')"
 
-  if reply="$("$claude" -p "$PROMPT" --model "$MODEL" 2>&1)"; then
-    printf '%s\n' "$reply"
-    first="$(printf '%s' "$reply" | head -n1)"
-    printf '[%s] MEOW sent (%s) -> %s\n' "$ts" "$MODEL" "$first" >>"$LOG"
+  if send_meow; then
+    printf '%s\n' "$MEOW_REPLY"
+    first="$(printf '%s' "$MEOW_REPLY" | head -n1)"
+    # Note the retry count in the log only when it took more than one go.
+    if [ "$MEOW_ATTEMPTS" -gt 1 ]; then tries=" after $MEOW_ATTEMPTS tries"; else tries=""; fi
+    printf '[%s] MEOW sent (%s%s) -> %s\n' "$ts" "$MODEL" "$tries" "$first" >>"$LOG"
     echo
     echo "meow: logged to $LOG"
   else
-    rc=$?
-    first="$(printf '%s' "$reply" | head -n1)"
-    printf 'meow: MEOW failed (exit %s):\n%s\n' "$rc" "$reply" >&2
-    printf '[%s] MEOW FAILED (exit %s) -> %s\n' "$ts" "$rc" "$first" >>"$LOG"
-    return "$rc"
+    first="$(printf '%s' "$MEOW_REPLY" | head -n1)"
+    printf 'meow: MEOW failed after %d attempt(s) (exit %s):\n%s\n' "$MEOW_ATTEMPTS" "$MEOW_RC" "$MEOW_REPLY" >&2
+    printf '[%s] MEOW FAILED (exit %s, %d attempts) -> %s\n' "$ts" "$MEOW_RC" "$MEOW_ATTEMPTS" "$first" >>"$LOG"
+    return "$MEOW_RC"
+  fi
+}
+
+# Fire a one-off MEOW to check the whole path end to end (claude CLI -> API ->
+# model) and print a clear PASS/FAIL with timing. Unlike a scheduled run this is
+# for interactive "does it work right now?" checks: no cat art, and it records a
+# distinct "MEOW TEST" log line so it never masquerades as (or skews) the
+# scheduled-run history that --status reports.
+test_meow() {
+  local ts start end elapsed first tries
+  ts="$(date '+%Y-%m-%d %H:%M:%S')"
+
+  printf 'meow: testing MEOW -> Claude Code (%s)...\n' "$MODEL"
+  start="$(date +%s)"
+  if send_meow; then
+    end="$(date +%s)"; elapsed=$(( end - start ))
+    first="$(printf '%s' "$MEOW_REPLY" | head -n1)"
+    if [ "$MEOW_ATTEMPTS" -gt 1 ]; then tries=", $MEOW_ATTEMPTS tries"; else tries=""; fi
+    printf 'meow: ✓ test passed (%ss%s) -> %s\n' "$elapsed" "$tries" "$first"
+    printf '[%s] MEOW TEST ok (%s, %ss%s) -> %s\n' "$ts" "$MODEL" "$elapsed" "$tries" "$first" >>"$LOG"
+  else
+    end="$(date +%s)"; elapsed=$(( end - start ))
+    first="$(printf '%s' "$MEOW_REPLY" | head -n1)"
+    printf 'meow: ✗ test failed (exit %s, %ss, %d attempts):\n%s\n' "$MEOW_RC" "$elapsed" "$MEOW_ATTEMPTS" "$MEOW_REPLY" >&2
+    printf '[%s] MEOW TEST FAILED (exit %s, %ss, %d attempts) -> %s\n' "$ts" "$MEOW_RC" "$elapsed" "$MEOW_ATTEMPTS" "$first" >>"$LOG"
+    return "$MEOW_RC"
   fi
 }
 
@@ -337,6 +421,7 @@ meow.sh — MEOW ping (every few hours) to keep your Claude usage window fresh.
 
 Usage:
   ./meow.sh                         Send MEOW now (haiku) and print the art
+  ./meow.sh --test                  Send a one-off MEOW and report pass/fail
   ./meow.sh --status                Show status (install, schedule, last run)
   ./meow.sh --start [HH:MM]         MEOW every ${INTERVAL_HOURS}h from HH:MM (macOS, default $DEFAULT_TIME)
   ./meow.sh --stop                  Stop the MEOW schedule (macOS)
@@ -353,6 +438,7 @@ EOF
 main() {
   case "${1:-}" in
     "")               run_meow ;;
+    --test|test)      test_meow ;;
     --status|status)  status ;;
     --start|start)    install_launchd "${2:-$DEFAULT_TIME}" ;;
     --stop|stop)      uninstall_launchd ;;
