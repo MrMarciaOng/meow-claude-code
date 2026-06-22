@@ -18,6 +18,10 @@ Claude's usage limit runs on a rolling ~5h window that starts at your **first**
 prompt. `meow` sends a tiny `MEOW` (cheap **haiku** model) **every 5 hours** from
 a time you choose (default **07:00**) to keep a fresh window open all day.
 
+**New:** `meow --test` runs a one-off connectivity check (PASS/FAIL + timing),
+and transient connection errors now auto-retry with capped exponential backoff
+— so a blip when the Mac wakes from sleep no longer logs a failure.
+
 ## Install (macOS / Linux)
 
 Run it straight from npm — no clone:
